@@ -583,6 +583,7 @@ sequentially.
       --derive-func-data            Generate function data from line data
       --(no-)external               Include (ignore) data for external files
       --config-file FILENAME        Specify configuration file location
+      --rc SETTING=VALUE            Override configuration file setting
       --compat MODE=on|off|auto     Set compat MODE (libtool, hammer, split_crc)
 
 For more information see: $lcov_url

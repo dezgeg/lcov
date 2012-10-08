@@ -576,6 +576,7 @@ Misc:
   -v, --version                     Print version number, then exit
   -q, --quiet                       Do not print progress messages
       --config-file FILENAME        Specify configuration file location
+      --rc SETTING=VALUE            Override configuration file setting
       --ignore-errors ERRORS        Continue after ERRORS (source)
 
 Operation:
