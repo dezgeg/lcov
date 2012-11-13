@@ -1833,7 +1833,7 @@ sub read_gcov_file($)
 						push(@result, 0);
 					} else {
 						# Check for zero count
-						if ($count eq "#####") {
+						if ($count =~ /^[#=]/) {
 							$count = 0;
 						}
 						push(@result, 1);
