@@ -684,8 +684,11 @@ sub gen_info($)
 
 		@file_list = `find "$directory" $maxdepth $follow -name \\*$ext -type f 2>/dev/null`;
 		chomp(@file_list);
-		@file_list or
-			die("ERROR: no $ext files found in $directory!\n");
+		if (!@file_list) {
+			warn("WARNING: no $ext files found in $directory - ".
+			     "skipping!\n");
+			return;
+		}
 		$prefix = get_common_prefix(1, @file_list);
 		info("Found %d %s files in %s\n", $#file_list+1, $type,
 		     $directory);
