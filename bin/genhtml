@@ -924,6 +924,7 @@ sub gen_html()
 	{
 		info("Using user-specified filename prefix \"".
 		     "$dir_prefix\"\n");
+		$dir_prefix =~ s/\/+$//;
 	}
 
 	# Read in test description file if specified
