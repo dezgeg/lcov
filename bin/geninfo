@@ -229,6 +229,7 @@ our $adjust_testname;
 our $config;		# Configuration file contents
 our @ignore_errors;	# List of errors to ignore (parameter)
 our @ignore;		# List of errors to ignore (array)
+our $ignored_lines_regex;
 our $initial;
 our $no_recursion = 0;
 our $maxdepth;
@@ -348,6 +349,7 @@ if (!GetOptions("test-name|t=s" => \$test_name,
 		"no-compat-libtool" => \$opt_no_compat_libtool,
 		"gcov-tool=s" => \$gcov_tool,
 		"ignore-errors=s" => \@ignore_errors,
+		"ignore-lines=s" => \$ignored_lines_regex,
 		"initial|i" => \$initial,
 		"no-recursion" => \$no_recursion,
 		"no-markers" => \$no_markers,
@@ -381,6 +383,13 @@ else
 	if (defined($opt_no_external)) {
 		$opt_external = 0;
 		$opt_no_external = undef;
+	}
+
+	if (defined($ignored_lines_regex))
+	{
+		eval { qr/$ignored_lines_regex/; };
+		die "Invalid regex passed to --ignore-lines: $@" if $@;
+		$EXCL_LINE = $ignored_lines_regex;
 	}
 }
 
@@ -580,6 +589,7 @@ sequentially.
       --(no-)compat-libtool         Enable (disable) libtool compatibility mode
       --gcov-tool TOOL              Specify gcov tool location
       --ignore-errors ERROR         Continue after ERROR (gcov, source, graph)
+      --ignore-lines REGEX          Ignore coverage from lines matching REGEX
       --no-recursion                Exclude subdirectories from processing
       --no-markers                  Ignore exclusion markers in source code
       --derive-func-data            Generate function data from line data

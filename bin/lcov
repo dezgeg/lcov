@@ -171,6 +171,7 @@ our $compat_libtool;	# If set, indicates that libtool mode is to be enabled
 our $no_compat_libtool;	# If set, indicates that libtool mode is to be disabled
 our $gcov_tool;
 our @opt_ignore_errors;
+our $ignored_lines_regex;
 our $initial;
 our $no_recursion = 0;
 our $to_package;
@@ -280,6 +281,7 @@ if (!GetOptions("directory|d|di=s" => \@directory,
 		"no-compat-libtool" => \$no_compat_libtool,
 		"gcov-tool=s" => \$gcov_tool,
 		"ignore-errors=s" => \@opt_ignore_errors,
+		"ignore-lines=s" => \$ignored_lines_regex,
 		"initial|i" => \$initial,
 		"no-recursion" => \$no_recursion,
 		"to-package=s" => \$to_package,
@@ -525,6 +527,7 @@ Options:
       --(no-)compat-libtool       Enable (disable) libtool compatibility mode
       --gcov-tool TOOL            Specify gcov tool location
       --ignore-errors ERRORS      Continue after ERRORS (gcov, source, graph)
+      --ignore-lines REGEX        Ignore coverage from lines matching REGEX
       --no-recursion              Exclude subdirectories from processing
       --to-package FILENAME       Store unprocessed coverage data in FILENAME
       --from-package FILENAME     Capture from unprocessed data in FILENAME
@@ -843,6 +846,10 @@ sub lcov_geninfo(@)
 	}
 	foreach (@opt_ignore_errors) {
 		@param = (@param, "--ignore-errors", $_);
+	}
+	if ($ignored_lines_regex)
+	{
+		@param = (@param, "--ignore-lines", $ignored_lines_regex);
 	}
 	if ($no_recursion) {
 		@param = (@param, "--no-recursion");
