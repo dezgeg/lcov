@@ -71,7 +71,7 @@ use Cwd qw /abs_path getcwd/;
 
 
 # Global constants
-our $lcov_version	= 'LCOV version 1.11 pre (CVS $Revision$)';
+our $lcov_version	= 'LCOV version 1.10';
 our $lcov_url		= "http://ltp.sourceforge.net/coverage/lcov.php";
 our $tool_name		= basename($0);
 
@@ -527,7 +527,7 @@ Options:
       --(no-)compat-libtool       Enable (disable) libtool compatibility mode
       --gcov-tool TOOL            Specify gcov tool location
       --ignore-errors ERRORS      Continue after ERRORS (gcov, source, graph)
-      --ignore-lines REGEX        Ignore coverage from lines matching REGEX
+      --ignore-lines REGEX        Always mark lines matching REXEX as covered
       --no-recursion              Exclude subdirectories from processing
       --to-package FILENAME       Store unprocessed coverage data in FILENAME
       --from-package FILENAME     Capture from unprocessed data in FILENAME
@@ -800,7 +800,8 @@ sub lcov_geninfo(@)
 
 	# Capture data
 	info("Capturing coverage data from ".join(" ", @dir)."\n");
-	@param = ("$tool_dir/geninfo", @dir);
+    # @param = ("perl", "-d:DProf", "$tool_dir/geninfo", @dir);
+	@param = ("perl", "$tool_dir/geninfo", @dir);
 	if ($output_filename)
 	{
 		@param = (@param, "--output-filename", $output_filename);
@@ -1561,10 +1562,6 @@ sub get_br_found_and_hit($)
 #        "func"  -> \%funcdata
 #        "found" -> $lines_found (number of instrumented lines found in file)
 #	 "hit"   -> $lines_hit (number of executed lines in file)
-#        "f_found" -> $fn_found (number of instrumented functions found in file)
-#	 "f_hit"   -> $fn_hit (number of executed functions in file)
-#        "b_found" -> $br_found (number of instrumented branches found in file)
-#	 "b_hit"   -> $br_hit (number of executed branches in file)
 #        "check" -> \%checkdata
 #        "testfnc" -> \%testfncdata
 #        "sumfnc"  -> \%sumfnccount
@@ -3718,10 +3715,10 @@ sub adjust_fncdata($$$)
 
 	# Remove count data in testfncdata for functions which are no longer
 	# in funcdata
-	foreach $testname (keys(%{$testfncdata})) {
+	foreach $testname (%{$testfncdata}) {
 		my $fnccount = $testfncdata->{$testname};
 
-		foreach $func (keys(%{$fnccount})) {
+		foreach $func (%{$fnccount}) {
 			if (!defined($funcdata->{$func})) {
 				delete($fnccount->{$func});
 			}
@@ -3729,7 +3726,7 @@ sub adjust_fncdata($$$)
 	}
 	# Remove count data in sumfnccount for functions which are no longer
 	# in funcdata
-	foreach $func (keys(%{$sumfnccount})) {
+	foreach $func (%{$sumfnccount}) {
 		if (!defined($funcdata->{$func})) {
 			delete($sumfnccount->{$func});
 		}

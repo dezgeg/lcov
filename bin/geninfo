@@ -53,7 +53,9 @@ use strict;
 use File::Basename; 
 use File::Spec::Functions qw /abs2rel catdir file_name_is_absolute splitdir
 			      splitpath catpath/;
+use Scalar::Util qw(looks_like_number);
 use Getopt::Long;
+use Data::Dumper;
 use Digest::MD5 qw(md5_base64);
 if( $^O eq "msys" )
 {
@@ -61,7 +63,7 @@ if( $^O eq "msys" )
 }
 
 # Constants
-our $lcov_version	= 'LCOV version 1.11 pre (CVS $Revision$)';
+our $lcov_version	= 'LCOV version 1.10';
 our $lcov_url		= "http://ltp.sourceforge.net/coverage/lcov.php";
 our $gcov_tool		= "gcov";
 our $tool_name		= basename($0);
@@ -248,7 +250,7 @@ our %opt_rc;
 our %compat_value;
 our $gcno_split_crc;
 our $func_coverage = 1;
-our $br_coverage = 0;
+our $br_coverage = 1;
 our $rc_auto_base = 1;
 
 our $cwd = `pwd`;
@@ -589,7 +591,7 @@ sequentially.
       --(no-)compat-libtool         Enable (disable) libtool compatibility mode
       --gcov-tool TOOL              Specify gcov tool location
       --ignore-errors ERROR         Continue after ERROR (gcov, source, graph)
-      --ignore-lines REGEX          Ignore coverage from lines matching REGEX
+      --ignore-lines REGEX          Always mark lines matching REXEX as covered
       --no-recursion                Exclude subdirectories from processing
       --no-markers                  Ignore exclusion markers in source code
       --derive-func-data            Generate function data from line data
@@ -694,11 +696,8 @@ sub gen_info($)
 
 		@file_list = `find "$directory" $maxdepth $follow -name \\*$ext -type f 2>/dev/null`;
 		chomp(@file_list);
-		if (!@file_list) {
-			warn("WARNING: no $ext files found in $directory - ".
-			     "skipping!\n");
-			return;
-		}
+		@file_list or
+			die("ERROR: no $ext files found in $directory!\n");
 		$prefix = get_common_prefix(1, @file_list);
 		info("Found %d %s files in %s\n", $#file_list+1, $type,
 		     $directory);
@@ -874,6 +873,7 @@ sub process_dafile($$)
 	my $source;		# gcov source header information
 	my $object;		# gcov object header information
 	my @matches;		# List of absolute paths matching filename
+	my @unprocessed;	# List of unprocessed source code files
 	my $base_dir;		# Base directory for current file
 	my @tmp_links;		# Temporary links to be cleaned up
 	my @result;
@@ -1019,7 +1019,7 @@ sub process_dafile($$)
 
 	# Clean up temporary links
 	foreach (@tmp_links) {
-		unlink($_);
+        unlink($_);
 	}
 
 	if ($gcov_error)
@@ -1069,6 +1069,7 @@ sub process_dafile($$)
 
 	# Traverse the list of generated .gcov files and combine them into a
 	# single .info file
+	@unprocessed = keys(%{$instr});
 	foreach $gcov_file (sort(@gcov_list))
 	{
 		my $i;
@@ -1151,12 +1152,22 @@ sub process_dafile($$)
 						\@matches, \@gcov_content);
 		}
 
+		# Remove processed file from list
+		for ($index = scalar(@unprocessed) - 1; $index >= 0; $index--)
+		{
+			if ($unprocessed[$index] eq $source_filename)
+			{
+				splice(@unprocessed, $index, 1);
+				last;
+			}
+		}
+
 		# Skip external files if requested
 		if (!$opt_external) {
 			if (is_external($source_filename)) {
 				info("  ignoring data for external file ".
 				     "$source_filename\n");
-				unlink($gcov_file);
+                 unlink($gcov_file);
 				next;
 			}
 		}
@@ -1279,7 +1290,7 @@ sub process_dafile($$)
 
 				# Increase $lines_hit in case of an execution
 				# count>0
-				if ($gcov_content[1] > 0) { $lines_hit++; }
+				if (looks_like_number($gcov_content[1]) && $gcov_content[1] > 0) { $lines_hit++; }
 			}
 
 			# Remove already processed data from array
@@ -1292,7 +1303,17 @@ sub process_dafile($$)
 		print(INFO_HANDLE "end_of_record\n");
 
 		# Remove .gcov file after processing
-		unlink($gcov_file);
+        unlink($gcov_file);
+	}
+
+	# Check for files which show up in the graph file but were never
+	# processed
+	if (@unprocessed && @gcov_list)
+	{
+		foreach (@unprocessed)
+		{
+			warn("WARNING: no data found for $_\n");
+		}
 	}
 
 	if (!($output_filename && ($output_filename eq "-")))
@@ -1388,6 +1409,7 @@ sub solve_relative_path($$)
 sub match_filename($@)
 {
 	my ($filename, @list) = @_;
+
 	my ($vol, $dir, $file) = splitpath($filename);
 	my @comp = splitdir($dir);
 	my $comps = scalar(@comp);
@@ -1396,7 +1418,9 @@ sub match_filename($@)
 
 entry:
 	foreach $entry (@list) {
-		my ($evol, $edir, $efile) = splitpath($entry);
+		# Get rid of /foo/../ and /./ components of path
+		my $nice_entry = solve_relative_path("", $entry);
+		my ($evol, $edir, $efile) = splitpath($nice_entry);
 		my @ecomp;
 		my $ecomps;
 		my $i;
@@ -1693,6 +1717,7 @@ sub read_gcov_file($)
 			if (/^branch\s+(\d+)\s+taken\s+=\s+(\d+)/) {
 				next if (!$br_coverage);
 				next if ($exclude_line);
+				print "here\n";
 				$branches = br_gvec_push($branches, $last_line,
 						$last_block, $1, $2);
 			} elsif (/^branch\s+(\d+)\s+never\s+executed/) {
@@ -1756,30 +1781,26 @@ sub read_gcov_file($)
 			chomp($_);
 
 			# Also remove CR from line-end
-			s/\015$//;
+            # s/\015$//;
 
 			if (/^\s*(\d+|\$+):\s*(\d+)-block\s+(\d+)\s*$/) {
 				# Block information - used to group related
 				# branches
 				$last_line = $2;
 				$last_block = $3;
-			} elsif (/^branch\s+(\d+)\s+taken\s+(\d+)/) {
-				next if (!$br_coverage);
-				next if ($exclude_line);
+			} elsif (/^branch\s+(\d+)\s+taken\s+(\d+)(?:\s\((.*)\))?/) {
+				next if (!$br_coverage || $exclude_line);
+                # next if ($3 eq 'throw');
 				$branches = br_gvec_push($branches, $last_line,
 						$last_block, $1, $2);
 			} elsif (/^branch\s+(\d+)\s+never\s+executed/) {
-				next if (!$br_coverage);
-				next if ($exclude_line);
+				next if (!$br_coverage || $exclude_line);
 				$branches = br_gvec_push($branches, $last_line,
 						$last_block, $1, '-');
 			}
 			elsif (/^function\s+(.+)\s+called\s+(\d+)\s+/)
 			{
-				next if (!$func_coverage);
-				if ($exclude_line) {
-					next;
-				}
+				next if (!$func_coverage || $exclude_line);
 				push(@functions, $2, $1);
 			}
 			elsif (/^call/)
@@ -1794,12 +1815,12 @@ sub read_gcov_file($)
 				$last_block = $UNNAMED_BLOCK;
 				# Check for exclusion markers
 				if (!$no_markers) {
-					if (/$EXCL_STOP/) {
+					if (/$EXCL_STOP/o) {
 						$exclude_flag = 0;
-					} elsif (/$EXCL_START/) {
+					} elsif (/$EXCL_START/o) {
 						$exclude_flag = 1;
 					}
-					if (/$EXCL_LINE/ || $exclude_flag) {
+					if (/$EXCL_LINE/o || $exclude_flag) {
 						$exclude_line = 1;
 					} else {
 						$exclude_line = 0;
@@ -1824,7 +1845,7 @@ sub read_gcov_file($)
 						push(@result, 0);
 					} else {
 						# Check for zero count
-						if ($count =~ /^[#=]/) {
+						if ($count eq "#####") {
 							$count = 0;
 						}
 						push(@result, 1);
@@ -2393,7 +2414,7 @@ sub graph_read(*$;$$)
 	my $result;
 	my $pos;
 
-	graph_expect($desc);
+    # graph_expect($desc);
 	if ($peek) {
 		$pos = tell($handle);
 		if ($pos == -1) {
@@ -2402,27 +2423,27 @@ sub graph_read(*$;$$)
 		}
 	}
 	$result = read($handle, $data, $length);
-	if ($debug) {
-		my $op = $peek ? "peek" : "read";
-		my $ascii = "";
-		my $hex = "";
-		my $i;
-
-		print(STDERR "DEBUG: $op($length)=$result: ");
-		for ($i = 0; $i < length($data); $i++) {
-			my $c = substr($data, $i, 1);;
-			my $n = ord($c);
-
-			$hex .= sprintf("%02x ", $n);
-			if ($n >= 32 && $n <= 127) {
-				$ascii .= $c;
-			} else {
-				$ascii .= ".";
-			}
-		}
-		print(STDERR "$hex |$ascii|");
-		print(STDERR "\n");
-	}
+    # if ($debug) {
+        # my $op = $peek ? "peek" : "read";
+        # my $ascii = "";
+        # my $hex = "";
+        # my $i;
+        # 
+        # print(STDERR "DEBUG: $op($length)=$result: ");
+        # for ($i = 0; $i < length($data); $i++) {
+            # my $c = substr($data, $i, 1);;
+            # my $n = ord($c);
+            # 
+            # $hex .= sprintf("%02x ", $n);
+            # if ($n >= 32 && $n <= 127) {
+                # $ascii .= $c;
+                # } else {
+                # $ascii .= ".";
+                # }
+            # }
+        # print(STDERR "$hex |$ascii|");
+        # print(STDERR "\n");
+        # }
 	if ($peek) {
 		if (!seek($handle, $pos, 0)) {
 			warn("Could not set file position: $!\n");
@@ -3128,13 +3149,14 @@ sub read_gcno_value(*$;$$)
 	my $word;
 	my $pos;
 
-	$word = read_gcno_word($handle, $desc, $peek);
+    # $word = read_gcno_word($handle, $desc, $peek);
+	$word = graph_read($handle, 4, $desc, $peek);
 	return undef if (!defined($word));
-	if ($big_endian) {
-		return unpack("N", $word);
-	} else {
+    # if ($big_endian) {
+    # return unpack("N", $word);
+    # } else {
 		return unpack("V", $word);
-	}
+        # }
 }
 
 #
